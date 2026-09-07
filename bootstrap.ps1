@@ -12,7 +12,7 @@
 #>
 
 # ---- EDIT THIS after you create your GitHub repo -------------------------
-$Global:BaseRepoUrl = "https://raw.githubusercontent.com/YOURUSERNAME/YOURREPO/main"
+$Global:BaseRepoUrl = "https://raw.githubusercontent.com/asup20cs/winscript/main"
 # ---------------------------------------------------------------------------
 
 $ErrorActionPreference = "Stop"

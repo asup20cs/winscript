@@ -2,8 +2,13 @@
   "modules": [
     {
       "name": "Debloat",
-      "file": "modules/Debloat.ps1",
+      "file": "modules/Debloat/Debloat.ps1",
       "function": "Get-DebloatTab"
+    },
+    {
+      "name": "Deny USB Storage",
+      "file": "modules/Permissions/DenyStorage.ps1",
+      "function": "Get-DenyUsbStorageTab"
     }
   ]
 }
