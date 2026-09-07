@@ -140,9 +140,7 @@ $BannerText.Text = @"
 ███░░       ███░░ ███░░       ███░░ ███░░                                     ███░░             ███░░      
 ███░░       ███░░ ███░░       ███░░   ░████████████                     ███████████████         ███░░      
   ░░░         ░░░   ░░░         ░░░      ░░░░░░░░░░░░                     ░░░░░░░░░░░░░░░         ░░░      
-                                
                                         Made With ε> by Ashutosh
-
 "@
 
 $bannerBrush = New-Object System.Windows.Media.LinearGradientBrush
