@@ -9,7 +9,7 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, Sys
 
 if (-not $Global:BaseRepoUrl) {
     # Fallback if someone dot-sources this file directly during dev/testing
-    $Global:BaseRepoUrl = "https://raw.githubusercontent.com/YOURUSERNAME/YOURREPO/main"
+    $Global:BaseRepoUrl = "https://raw.githubusercontent.com/asup20cs/winscript/main"
 }
 
 # ---------------------------------------------------------------------------
@@ -93,10 +93,12 @@ function Start-BackgroundTask {
             <RowDefinition Height="*"/>
             <RowDefinition Height="180"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0" Background="#252526" Padding="12">
-            <TextBlock Text="WinTool" FontSize="20" FontWeight="Bold"/>
+        <Border Grid.Row="0" Background="#181818" Padding="12,16" BorderBrush="#2D2D30" BorderThickness="0,0,0,1">
+            <TextBlock Name="BannerText" FontFamily="Consolas" FontSize="13"
+                       HorizontalAlignment="Center" TextAlignment="Center"/>
         </Border>
 
         <TabControl Grid.Row="1" Name="TabControl" Background="#1E1E1E" Margin="8"/>
@@ -112,6 +114,11 @@ function Start-BackgroundTask {
                 <TextBlock Name="StatusText" Text="Ready" Foreground="#A0A0A0"/>
             </StatusBarItem>
         </StatusBar>
+
+        <Border Grid.Row="4" Background="#181818" Padding="6" BorderBrush="#2D2D30" BorderThickness="0,1,0,0">
+            <TextBlock Text="Made with love by Ashutosh" FontStyle="Italic" FontSize="11"
+                       Foreground="#707070" HorizontalAlignment="Center"/>
+        </Border>
     </Grid>
 </Window>
 "@
@@ -122,6 +129,33 @@ $window = [Windows.Markup.XamlReader]::Load($reader)
 $TabControl = $window.FindName("TabControl")
 $LogBox     = $window.FindName("LogBox")
 $StatusText = $window.FindName("StatusText")
+$BannerText = $window.FindName("BannerText")
+
+$BannerText.Text = @"
+███         ███   ███         ███      ████████████                     ███████████████   ███████████████  
+██████      ███░░ ██████   ██████░░ ███  ░░░░░░░░░░░░                     ░░░░███░░░░░░░░   ░░░░███░░░░░░░░
+███░░░███   ███░░ ███░░░███  ░███░░ ███░░                                     ███░░             ███░░      
+███░░   ░██████░░ ███░░   ░░░ ███░░ ███░░                █████████            ███░░             ███░░      
+███░░      ░███░░ ███░░       ███░░ ███░░                  ░░░░░░░░░          ███░░             ███░░      
+███░░       ███░░ ███░░       ███░░ ███░░                                     ███░░             ███░░      
+███░░       ███░░ ███░░       ███░░   ░████████████                     ███████████████         ███░░      
+  ░░░         ░░░   ░░░         ░░░      ░░░░░░░░░░░░                     ░░░░░░░░░░░░░░░         ░░░      
+"@
+
+$bannerBrush = New-Object System.Windows.Media.LinearGradientBrush
+$bannerBrush.StartPoint = New-Object System.Windows.Point(0,0)
+$bannerBrush.EndPoint   = New-Object System.Windows.Point(1,1)
+$bannerBrush.GradientStops.Add((New-Object System.Windows.Media.GradientStop([System.Windows.Media.Color]::FromRgb(0,217,255), 0)))
+$bannerBrush.GradientStops.Add((New-Object System.Windows.Media.GradientStop([System.Windows.Media.Color]::FromRgb(10,132,255), 1)))
+$BannerText.Foreground = $bannerBrush
+
+$bannerGlow = New-Object System.Windows.Media.Effects.DropShadowEffect
+$bannerGlow.Color = [System.Windows.Media.Color]::FromRgb(10,132,255)
+$bannerGlow.BlurRadius = 20
+$bannerGlow.ShadowDepth = 3
+$bannerGlow.Opacity = 0.6
+$BannerText.Effect = $bannerGlow
+
 
 # Continuously flush queued log lines to the UI (started once, used by every module)
 $logTimer = New-Object System.Windows.Threading.DispatcherTimer
