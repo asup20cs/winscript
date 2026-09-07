@@ -63,7 +63,7 @@ function Start-BackgroundTask {
 [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="WinTool" Height="720" Width="1000"
+        Title="Winscript NMC-IT" Height="720" Width="1000"
         WindowStartupLocation="CenterScreen"
         Background="#1E1E1E">
     <Window.Resources>
@@ -140,6 +140,9 @@ $BannerText.Text = @"
 ███░░       ███░░ ███░░       ███░░ ███░░                                     ███░░             ███░░      
 ███░░       ███░░ ███░░       ███░░   ░████████████                     ███████████████         ███░░      
   ░░░         ░░░   ░░░         ░░░      ░░░░░░░░░░░░                     ░░░░░░░░░░░░░░░         ░░░      
+                                
+                                        Made With ε> by Ashutosh
+
 "@
 
 $bannerBrush = New-Object System.Windows.Media.LinearGradientBrush
