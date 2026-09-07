@@ -1,0 +1,9 @@
+{
+  "modules": [
+    {
+      "name": "Debloat",
+      "file": "modules/Debloat.ps1",
+      "function": "Get-DebloatTab"
+    }
+  ]
+}
