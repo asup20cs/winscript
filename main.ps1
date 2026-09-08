@@ -63,8 +63,7 @@ function Start-BackgroundTask {
 [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="WinTool" Height="880" Width="1300"
-        MinHeight="650" MinWidth="950"
+        Title="WinTool" Height="540" Width="960"
         WindowStartupLocation="CenterScreen"
         Background="#1E1E1E">
     <Window.Resources>
@@ -133,14 +132,12 @@ $StatusText = $window.FindName("StatusText")
 $BannerText = $window.FindName("BannerText")
 
 $BannerText.Text = @"
-███         ███   ███         ███      ████████████                     ███████████████   ███████████████  
-██████      ███░░ ██████   ██████░░ ███  ░░░░░░░░░░░░                     ░░░░███░░░░░░░░   ░░░░███░░░░░░░░
-███░░░███   ███░░ ███░░░███  ░███░░ ███░░                                     ███░░             ███░░      
-███░░   ░██████░░ ███░░   ░░░ ███░░ ███░░                █████████            ███░░             ███░░      
-███░░      ░███░░ ███░░       ███░░ ███░░                  ░░░░░░░░░          ███░░             ███░░      
-███░░       ███░░ ███░░       ███░░ ███░░                                     ███░░             ███░░      
-███░░       ███░░ ███░░       ███░░   ░████████████                     ███████████████         ███░░      
-  ░░░         ░░░   ░░░         ░░░      ░░░░░░░░░░░░                     ░░░░░░░░░░░░░░░         ░░░      
+ __   __     __    __     ______     __     ______  
+/\ "-.\ \   /\ "-./  \   /\  ___\   /\ \   /\__  _\ 
+\ \ \-.  \  \ \ \-./\ \  \ \ \____  \ \ \  \/_/\ \/ 
+ \ \_\\"\_\  \ \_\ \ \_\  \ \_____\  \ \_\    \ \_\ 
+  \/_/ \/_/   \/_/  \/_/   \/_____/   \/_/     \/_/ 
+            Made with passion by Ashutosh
 "@
 
 $bannerBrush = New-Object System.Windows.Media.LinearGradientBrush
