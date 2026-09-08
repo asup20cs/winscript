@@ -9,7 +9,7 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, Sys
 
 if (-not $Global:BaseRepoUrl) {
     # Fallback if someone dot-sources this file directly during dev/testing
-    $Global:BaseRepoUrl = "https://raw.githubusercontent.com/asup20cs/winscript/main"
+    $Global:BaseRepoUrl = "https://raw.githubusercontent.com/YOURUSERNAME/YOURREPO/main"
 }
 
 # ---------------------------------------------------------------------------
@@ -63,7 +63,8 @@ function Start-BackgroundTask {
 [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Winscript NMC-IT" Height="720" Width="1000"
+        Title="WinTool" Height="880" Width="1300"
+        MinHeight="650" MinWidth="950"
         WindowStartupLocation="CenterScreen"
         Background="#1E1E1E">
     <Window.Resources>
@@ -140,7 +141,6 @@ $BannerText.Text = @"
 ███░░       ███░░ ███░░       ███░░ ███░░                                     ███░░             ███░░      
 ███░░       ███░░ ███░░       ███░░   ░████████████                     ███████████████         ███░░      
   ░░░         ░░░   ░░░         ░░░      ░░░░░░░░░░░░                     ░░░░░░░░░░░░░░░         ░░░      
-                                        Made With ε> by Ashutosh
 "@
 
 $bannerBrush = New-Object System.Windows.Media.LinearGradientBrush
@@ -185,7 +185,20 @@ try {
             $code = Invoke-RestMethod -Uri "$BaseRepoUrl/$($mod.file)" -UseBasicParsing
             Invoke-Expression $code
             $tabItem = & $mod.function
-            if ($tabItem) { $TabControl.Items.Add($tabItem) | Out-Null }
+            if ($tabItem) {
+                # Modules aren't required to wrap themselves in a ScrollViewer --
+                # enforce it here so every tab scrolls if its content overflows
+                # the window (e.g. on smaller screens or long checklists).
+                if ($tabItem.Content -isnot [System.Windows.Controls.ScrollViewer]) {
+                    $originalContent = $tabItem.Content
+                    $scrollWrapper = New-Object System.Windows.Controls.ScrollViewer
+                    $scrollWrapper.VerticalScrollBarVisibility = 'Auto'
+                    $scrollWrapper.HorizontalScrollBarVisibility = 'Disabled'
+                    $scrollWrapper.Content = $originalContent
+                    $tabItem.Content = $scrollWrapper
+                }
+                $TabControl.Items.Add($tabItem) | Out-Null
+            }
         }
         catch {
             Write-Log "Failed to load module '$($mod.name)': $($_.Exception.Message)" "Error"
