@@ -1,208 +1,188 @@
 <#
 .SYNOPSIS
-    AdminAccount module. Defines Get-AdminAccountTab, called by main.ps1 after
-    this file is downloaded and Invoke-Expression'd.
+    Accounts / EnableDefaultAdmin module.
 
-    Follows the standard module contract:
-      - One exported function returning a fully-built TabItem.
-      - Write-Log on the GUI thread; $SyncHash.LogQueue.Enqueue in background work.
+    Order of operations matters here -- we never touch the current user's
+    group membership until the built-in Administrator account has been
+    confirmed enabled AND its password has been confirmed set. If either
+    of those fails, the demote step is skipped entirely so you can't end up
+    with no working admin account on the box.
 
-    What the tab does:
-      1. Enables the built-in Administrator account (located by RID 500, so it
-         works even if the account has been renamed).
-      2. Sets a user-chosen password on it.
-      3. Optionally (checkbox, default on) removes the account running the tool
-         from the local Administrators group and adds it to the Users group.
-
-    Safety notes:
-      - No System Restore point is taken here on purpose: System Restore does
-        not roll back SAM data (passwords / group membership), so it would give
-        false comfort. Instead the script fails closed: the current user is only
-        demoted AFTER the built-in Administrator is enabled, its new password
-        has been accepted by Windows, and it is verified to be a member of the
-        Administrators group.
-      - Groups are resolved from well-known SIDs (S-1-5-32-544 / -545) so this
-        works on non-English Windows installs.
+    Uses well-known SIDs (S-1-5-32-544 = Administrators, S-1-5-32-545 =
+    Users) instead of the group names, since "Administrators"/"Users" are
+    localized on non-English Windows builds.
 #>
 
-function Get-AdminAccountTab {
+function Get-EnableDefaultAdminTab {
     $tab = New-Object System.Windows.Controls.TabItem
-    $tab.Header = "Admin Account"
+    $tab.Header = "Local Accounts"
 
-    $scroll = New-Object System.Windows.Controls.ScrollViewer
-    $scroll.VerticalScrollBarVisibility = 'Auto'
+    $panel = New-Object System.Windows.Controls.StackPanel
+    $panel.Margin = 10
 
-    $mainPanel = New-Object System.Windows.Controls.StackPanel
-    $mainPanel.Margin = 10
+    $warn = New-Object System.Windows.Controls.TextBlock
+    $warn.Text = "This enables the built-in Administrator account, sets its password, then removes the CURRENT user ($([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)) from the Administrators group and adds it to Users. Make sure you will remember the Administrator password -- it becomes your only local admin account after this runs."
+    $warn.TextWrapping = 'Wrap'
+    $warn.Foreground = 'IndianRed'
+    $warn.FontWeight = 'Bold'
+    $warn.Margin = "0,0,0,14"
+    $panel.Children.Add($warn) | Out-Null
 
-    # --- Explanation / warning block ----------------------------------------
-    $info = New-Object System.Windows.Controls.TextBlock
-    $info.TextWrapping = 'Wrap'
-    $info.Margin = "4,4,4,8"
-    $info.Text = ("This enables the built-in Windows Administrator account (hidden by default), " +
-                  "sets a new password on it, and optionally turns the account you are using now " +
-                  "into a Standard user. Afterwards, use the Administrator account for installs " +
-                  "and system-wide changes.")
-    $mainPanel.Children.Add($info) | Out-Null
-
-    $warning = New-Object System.Windows.Controls.TextBlock
-    $warning.TextWrapping = 'Wrap'
-    $warning.Margin = "4,0,4,10"
-    $warning.FontWeight = 'Bold'
-    $warning.Foreground = [System.Windows.Media.Brushes]::Firebrick
-    $warning.Text = ("Remember this password! If your own account is demoted, this password is " +
-                     "the only way to approve installs and system changes afterwards.")
-    $mainPanel.Children.Add($warning) | Out-Null
-
-    # --- Password entry -------------------------------------------------------
-    $lblPw = New-Object System.Windows.Controls.Label
-    $lblPw.Content = "New Administrator password:"
-    $lblPw.Margin = "0,4,0,0"
-    $mainPanel.Children.Add($lblPw) | Out-Null
+    $lblPw = New-Object System.Windows.Controls.TextBlock
+    $lblPw.Text = "New password for Administrator account:"
+    $panel.Children.Add($lblPw) | Out-Null
 
     $pwBox = New-Object System.Windows.Controls.PasswordBox
-    $pwBox.Margin = "4,0,4,8"
-    $mainPanel.Children.Add($pwBox) | Out-Null
+    $pwBox.Width = 300
+    $pwBox.HorizontalAlignment = 'Left'
+    $pwBox.Margin = "0,4,0,10"
+    $panel.Children.Add($pwBox) | Out-Null
 
-    $lblPw2 = New-Object System.Windows.Controls.Label
-    $lblPw2.Content = "Confirm password:"
-    $mainPanel.Children.Add($lblPw2) | Out-Null
+    $lblPw2 = New-Object System.Windows.Controls.TextBlock
+    $lblPw2.Text = "Confirm password:"
+    $panel.Children.Add($lblPw2) | Out-Null
 
-    $pwConfirm = New-Object System.Windows.Controls.PasswordBox
-    $pwConfirm.Margin = "4,0,4,8"
-    $mainPanel.Children.Add($pwConfirm) | Out-Null
+    $pwBox2 = New-Object System.Windows.Controls.PasswordBox
+    $pwBox2.Width = 300
+    $pwBox2.HorizontalAlignment = 'Left'
+    $pwBox2.Margin = "0,4,0,10"
+    $panel.Children.Add($pwBox2) | Out-Null
 
-    # --- Options ----------------------------------------------------------------
-    $demoteCheck = New-Object System.Windows.Controls.CheckBox
-    $demoteCheck.Content = "Demote the current account to a Standard user (remove from Administrators, add to Users)"
-    $demoteCheck.IsChecked = $true
-    $demoteCheck.Margin = "4,10,4,4"
-    $mainPanel.Children.Add($demoteCheck) | Out-Null
+    $reqText = New-Object System.Windows.Controls.TextBlock
+    $reqText.Text = "Minimum 8 characters, and at least 3 of: uppercase, lowercase, digit, symbol."
+    $reqText.Foreground = 'Gray'
+    $reqText.FontSize = 11
+    $reqText.Margin = "0,0,0,10"
+    $panel.Children.Add($reqText) | Out-Null
 
-    # --- Apply button ------------------------------------------------------------
+    $validationText = New-Object System.Windows.Controls.TextBlock
+    $validationText.Foreground = 'IndianRed'
+    $validationText.TextWrapping = 'Wrap'
+    $validationText.Margin = "0,0,0,10"
+    $panel.Children.Add($validationText) | Out-Null
+
     $btnApply = New-Object System.Windows.Controls.Button
-    $btnApply.Content = "Enable Administrator && Apply"
-    $btnApply.Margin = "4,16,4,4"
+    $btnApply.Content = "Enable Administrator, Set Password, and Demote Current User"
     $btnApply.HorizontalAlignment = 'Left'
-    $mainPanel.Children.Add($btnApply) | Out-Null
+    $panel.Children.Add($btnApply) | Out-Null
 
     $btnApply.Add_Click({
+        $validationText.Text = ""
         $pw1 = $pwBox.Password
-        $pw2 = $pwConfirm.Password
+        $pw2 = $pwBox2.Password
 
-        if ([string]::IsNullOrEmpty($pw1)) {
-            Write-Log "Enter a password for the Administrator account." "Warn"
+        if ([string]::IsNullOrEmpty($pw1) -or [string]::IsNullOrEmpty($pw2)) {
+            $validationText.Text = "Enter and confirm a password."
             return
         }
-        if ($pw1 -cne $pw2) {
-            Write-Log "Passwords do not match." "Warn"
+        if ($pw1 -ne $pw2) {
+            $validationText.Text = "Passwords do not match."
             return
         }
         if ($pw1.Length -lt 8) {
-            Write-Log "Password is short - Windows may reject it if a complexity policy is enabled." "Warn"
+            $validationText.Text = "Password must be at least 8 characters."
+            return
         }
-
-        $isElevated = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-        if (-not $isElevated) {
-            Write-Log "This tool must be running elevated (as Administrator) to change accounts." "Error"
+        $categories = 0
+        if ($pw1 -cmatch '[A-Z]') { $categories++ }
+        if ($pw1 -cmatch '[a-z]') { $categories++ }
+        if ($pw1 -match '[0-9]') { $categories++ }
+        if ($pw1 -match '[^a-zA-Z0-9]') { $categories++ }
+        if ($categories -lt 3) {
+            $validationText.Text = "Password needs at least 3 of: uppercase, lowercase, digit, symbol."
             return
         }
 
-        $demote = [bool]$demoteCheck.IsChecked
-        $plan = if ($demote) { "and demote '$env:USERNAME' to a Standard user" } else { "(current user keeps its rights)" }
-        $answer = [System.Windows.MessageBox]::Show(
-            "Enable the built-in Administrator account, set its password, ${plan}?`n`nContinue?",
-            "Confirm account change", 'YesNo', 'Warning')
-        if ($answer -ne 'Yes') { return }
+        $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+
+        $confirmMsg = "This will:`n`n1. Enable the built-in Administrator account`n2. Set its password`n3. Remove '$currentUser' from Administrators`n4. Add '$currentUser' to Users`n`nYou will need to sign out and back in (or restart) for the group change to apply. Continue?"
+        $result = [System.Windows.MessageBox]::Show($confirmMsg, "Confirm Account Changes", 'YesNo', 'Warning')
+        if ($result -ne 'Yes') {
+            $validationText.Text = "Cancelled."
+            $pwBox.Password = ""; $pwBox2.Password = ""
+            return
+        }
+
+        $securePw = ConvertTo-SecureString -String $pw1 -AsPlainText -Force
+        $pwBox.Password = ""; $pwBox2.Password = ""
+        $pw1 = $null; $pw2 = $null
 
         $btnApply.IsEnabled = $false
-        Write-Log "Applying administrator account changes..."
+        Write-Log "Starting local account changes for user '$currentUser'..."
 
-        Start-BackgroundTask -ArgumentList @($pw1, $demote) -Work {
-            param($SyncHash, $Password, $DemoteCurrent)
+        Start-BackgroundTask -ArgumentList @($securePw, $currentUser) -Work {
+            param($SyncHash, $SecurePassword, $CurrentUser)
 
+            $adminAccountReady = $false
+
+            # --- Step 1 & 2: enable Administrator and set its password -------
             try {
-                # Resolve localized group names from well-known SIDs.
-                # S-1-5-32-544 = Administrators, S-1-5-32-545 = Users.
-                $adminsGroup = Get-LocalGroup -SID (New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544')) -ErrorAction Stop
-                $usersGroup  = Get-LocalGroup -SID (New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-545')) -ErrorAction Stop
-
-                # Find the built-in Administrator by RID 500 (rename/locale-proof).
-                $builtInAdmin = Get-LocalUser -ErrorAction Stop |
-                    Where-Object { $_.SID.Value -match '-500$' } |
-                    Select-Object -First 1
-                if (-not $builtInAdmin) {
-                    throw "Built-in Administrator account (RID 500) not found on this machine."
-                }
-
-                # Step 1: enable the account.
-                $SyncHash.LogQueue.Enqueue("Enabling built-in Administrator account '$($builtInAdmin.Name)'...")
-                Set-LocalUser -InputObject $builtInAdmin -Enabled $true -ErrorAction Stop
-                $SyncHash.LogQueue.Enqueue("Account enabled.")
-
-                # Step 2: set the password. If Windows rejects it (complexity
-                # policy), we abort BEFORE touching the current user's groups.
-                $secure = ConvertTo-SecureString -String $Password -AsPlainText -Force
-                try {
-                    Set-LocalUser -InputObject $builtInAdmin -Password $secure -ErrorAction Stop
-                    $SyncHash.LogQueue.Enqueue("Password set for '$($builtInAdmin.Name)'.")
-                }
-                catch {
-                    throw "Windows rejected the password (complexity policy?). Nothing else was changed. Details: $($_.Exception.Message)"
-                }
-
-                # Step 3: demote the current account, now that a working admin exists.
-                if ($DemoteCurrent) {
-                    $identity   = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-                    $currentSid = $identity.User.Value
-
-                    if ($currentSid -eq $builtInAdmin.SID.Value) {
-                        $SyncHash.LogQueue.Enqueue("[WARN] Tool is running AS the built-in Administrator; nothing to demote.")
-                    }
-                    else {
-                        # Fail-closed: verify the built-in admin is in the Administrators
-                        # group before removing anyone. (Get-LocalGroupMember can throw if
-                        # the group contains orphaned SIDs - aborting there is intended.)
-                        $adminPresent = Get-LocalGroupMember -Group $adminsGroup -ErrorAction Stop |
-                            Where-Object { $_.SID.Value -eq $builtInAdmin.SID.Value }
-                        if (-not $adminPresent) {
-                            throw "Built-in Administrator is not in the Administrators group - refusing to demote '$($identity.Name)'."
-                        }
-
-                        try {
-                            Remove-LocalGroupMember -Group $adminsGroup -Member $currentSid -ErrorAction Stop
-                            $SyncHash.LogQueue.Enqueue("Removed '$($identity.Name)' from Administrators.")
-                        }
-                        catch {
-                            $SyncHash.LogQueue.Enqueue("[WARN] Could not remove from Administrators (possibly not a member): $($_.Exception.Message)")
-                        }
-
-                        try {
-                            Add-LocalGroupMember -Group $usersGroup -Member $currentSid -ErrorAction Stop
-                            $SyncHash.LogQueue.Enqueue("Added '$($identity.Name)' to Users.")
-                        }
-                        catch {
-                            $SyncHash.LogQueue.Enqueue("[ERROR] Could not add to Users group: $($_.Exception.Message)")
-                        }
-
-                        $SyncHash.LogQueue.Enqueue("Group changes apply to new sign-ins; already-running apps keep their old rights until restarted.")
-                    }
+                $admin = Get-LocalUser -Name "Administrator" -ErrorAction Stop
+                if (-not $admin.Enabled) {
+                    Enable-LocalUser -Name "Administrator" -ErrorAction Stop
+                    $SyncHash.LogQueue.Enqueue("Administrator account enabled.")
                 }
                 else {
-                    $SyncHash.LogQueue.Enqueue("Demote checkbox unticked - current user's group membership untouched.")
+                    $SyncHash.LogQueue.Enqueue("Administrator account was already enabled.")
                 }
 
-                $SyncHash.LogQueue.Enqueue("Administrator account setup finished.")
+                Set-LocalUser -Name "Administrator" -Password $SecurePassword -ErrorAction Stop
+                $SyncHash.LogQueue.Enqueue("Administrator password set.")
+
+                # Verify before proceeding any further
+                $verify = Get-LocalUser -Name "Administrator" -ErrorAction Stop
+                if ($verify.Enabled) {
+                    $adminAccountReady = $true
+                    $SyncHash.LogQueue.Enqueue("Verified: Administrator account is enabled.")
+                }
+                else {
+                    $SyncHash.LogQueue.Enqueue("[ERROR] Administrator account did not verify as enabled. Aborting before touching current user's group membership.")
+                }
             }
             catch {
-                $SyncHash.LogQueue.Enqueue("[ERROR] $($_.Exception.Message)")
+                $SyncHash.LogQueue.Enqueue("[ERROR] Failed to enable/configure Administrator account: $($_.Exception.Message)")
+                $SyncHash.LogQueue.Enqueue("Aborting -- current user's group membership was NOT changed.")
+            }
+
+            if (-not $adminAccountReady) {
+                return
+            }
+
+            # --- Step 3 & 4: only run if Administrator is confirmed working --
+            try {
+                $adminGroup = Get-LocalGroup -SID "S-1-5-32-544" -ErrorAction Stop
+                $usersGroup = Get-LocalGroup -SID "S-1-5-32-545" -ErrorAction Stop
+
+                try {
+                    Add-LocalGroupMember -SID $usersGroup.SID -Member $CurrentUser -ErrorAction Stop
+                    $SyncHash.LogQueue.Enqueue("Added '$CurrentUser' to $($usersGroup.Name).")
+                }
+                catch {
+                    if ($_.Exception.Message -match "already a member") {
+                        $SyncHash.LogQueue.Enqueue("'$CurrentUser' is already a member of $($usersGroup.Name).")
+                    }
+                    else {
+                        $SyncHash.LogQueue.Enqueue("[ERROR] Failed to add '$CurrentUser' to Users group: $($_.Exception.Message)")
+                    }
+                }
+
+                try {
+                    Remove-LocalGroupMember -SID $adminGroup.SID -Member $CurrentUser -ErrorAction Stop
+                    $SyncHash.LogQueue.Enqueue("Removed '$CurrentUser' from $($adminGroup.Name).")
+                    $SyncHash.LogQueue.Enqueue("Done. Sign out and back in (or restart) for the change to take effect.")
+                }
+                catch {
+                    $SyncHash.LogQueue.Enqueue("[ERROR] Failed to remove '$CurrentUser' from Administrators: $($_.Exception.Message)")
+                }
+            }
+            catch {
+                $SyncHash.LogQueue.Enqueue("[ERROR] Failed to resolve local groups by SID: $($_.Exception.Message)")
             }
         } -OnDone {
             $btnApply.IsEnabled = $true
         }.GetNewClosure()
     }.GetNewClosure())
 
-    $scroll.Content = $mainPanel
-    $tab.Content = $scroll
+    $tab.Content = $panel
     return $tab
 }
