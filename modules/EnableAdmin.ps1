@@ -111,7 +111,7 @@ function Get-EnableDefaultAdminTab {
         Write-Log "Starting local account changes for user '$currentUser'..."
 
         Start-BackgroundTask -ArgumentList @($securePw, $currentUser) -Work {
-            param($SyncHash, $SecurePassword, $CurrentUser)
+            param($SyncHash, [SecureString] $SecurePassword, $CurrentUser)
 
             $adminAccountReady = $false
 
