@@ -14,6 +14,11 @@
       "name": "Enable Administrator",
       "file": "modules/EnableAdmin.ps1",
       "function": "Get-EnableDefaultAdminTab"
+    },
+    {
+      "name": "Disable Firewall",
+      "file": "modules/DisableFirewall.ps1",
+      "function": "Get-FirewallTab"
     }
   ]
 }
