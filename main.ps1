@@ -9,7 +9,7 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, Sys
 
 if (-not $Global:BaseRepoUrl) {
     # Fallback if someone dot-sources this file directly during dev/testing
-    $Global:BaseRepoUrl = "https://raw.githubusercontent.com/YOURUSERNAME/YOURREPO/main"
+    $Global:BaseRepoUrl = "https://raw.githubusercontent.com/asup20cs/winscript/main"
 }
 
 # ---------------------------------------------------------------------------
