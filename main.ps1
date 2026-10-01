@@ -68,30 +68,108 @@ function Start-BackgroundTask {
         Background="#1E1E1E">
     <Window.Resources>
         <Style TargetType="Button">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Background" Value="#2D2D30"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="BorderBrush" Value="#3F3F46"/>
+            <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="10,5"/>
             <Setter Property="Margin" Value="4"/>
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#3E3E42"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#0A84FF"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#007ACC"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#007ACC"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Background" Value="#252526"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#2D2D30"/>
+                                <Setter Property="Foreground" Value="#6E6E6E"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
         <Style TargetType="CheckBox">
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="Margin" Value="4"/>
         </Style>
-        <Style TargetType="TabItem">
-            <Setter Property="Foreground" Value="Black"/>
-            <Setter Property="Padding" Value="12,6"/>
-        </Style>
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="White"/>
+        </Style>
+
+        <Style x:Key="SidebarTabItem" TargetType="TabItem">
+            <Setter Property="Foreground" Value="#A0A0A0"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Padding" Value="16,10"/>
+            <Setter Property="Margin" Value="0,2"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border Name="Bd" Background="Transparent" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter ContentSource="Header" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#2D2D30"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#252526"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="TabControl">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabControl">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="170"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Background="#181818" CornerRadius="10" BorderBrush="#2D2D30" BorderThickness="1" Padding="8">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                    <TabPanel IsItemsHost="True" Background="Transparent"/>
+                                </ScrollViewer>
+                            </Border>
+                            <Border Grid.Column="2" Background="#181818" CornerRadius="10" BorderBrush="#2D2D30" BorderThickness="1" Padding="16">
+                                <ContentPresenter ContentSource="SelectedContent"/>
+                            </Border>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </Window.Resources>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="180"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
@@ -101,21 +179,16 @@ function Start-BackgroundTask {
                        HorizontalAlignment="Center" TextAlignment="Center"/>
         </Border>
 
-        <TabControl Grid.Row="1" Name="TabControl" Background="#1E1E1E" Margin="8"/>
+        <TabControl Grid.Row="1" Name="TabControl" Background="#1E1E1E" Margin="8"
+                    ItemContainerStyle="{StaticResource SidebarTabItem}"/>
 
-        <GroupBox Grid.Row="2" Header="Log" Foreground="White" Margin="8,0,8,8">
-            <TextBox Name="LogBox" Background="#101010" Foreground="#C0C0C0"
-                     FontFamily="Consolas" FontSize="12" IsReadOnly="True"
-                     VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/>
-        </GroupBox>
-
-        <StatusBar Grid.Row="3" Background="#252526">
+        <StatusBar Grid.Row="2" Background="#252526">
             <StatusBarItem>
                 <TextBlock Name="StatusText" Text="Ready" Foreground="#A0A0A0"/>
             </StatusBarItem>
         </StatusBar>
 
-        <Border Grid.Row="4" Background="#181818" Padding="6" BorderBrush="#2D2D30" BorderThickness="0,1,0,0">
+        <Border Grid.Row="3" Background="#181818" Padding="6" BorderBrush="#2D2D30" BorderThickness="0,1,0,0">
             <TextBlock Text="Made with love by Ashutosh" FontStyle="Italic" FontSize="11"
                        Foreground="#707070" HorizontalAlignment="Center"/>
         </Border>
@@ -127,9 +200,19 @@ $reader = New-Object System.Xml.XmlNodeReader $xaml
 $window = [Windows.Markup.XamlReader]::Load($reader)
 
 $TabControl = $window.FindName("TabControl")
-$LogBox     = $window.FindName("LogBox")
 $StatusText = $window.FindName("StatusText")
 $BannerText = $window.FindName("BannerText")
+
+# Safety net: without this, an unhandled exception anywhere in a button click
+# handler (in ANY module/tab) kills the whole Dispatcher message loop and the
+# window just disappears -- which looks like "it exits after running a
+# module" and forces a full re-download/re-run. This catches it, logs it to
+# the console, and keeps the window (and every other tab) alive.
+$window.Dispatcher.add_UnhandledException({
+    param($senderObj, $e)
+    try { $Global:SyncHash.LogQueue.Enqueue("[UI ERROR] $($e.Exception.Message)") } catch {}
+    $e.Handled = $true
+})
 
 $BannerText.Text = @"
  __   __     __    __     ______     __     ______  
@@ -137,7 +220,6 @@ $BannerText.Text = @"
 \ \ \-.  \  \ \ \-./\ \  \ \ \____  \ \ \  \/_/\ \/ 
  \ \_\\"\_\  \ \_\ \ \_\  \ \_____\  \ \_\    \ \_\ 
   \/_/ \/_/   \/_/  \/_/   \/_____/   \/_/     \/_/ 
-            Made with passion by Ashutosh
 "@
 
 $bannerBrush = New-Object System.Windows.Media.LinearGradientBrush
@@ -155,17 +237,20 @@ $bannerGlow.Opacity = 0.6
 $BannerText.Effect = $bannerGlow
 
 
-# Continuously flush queued log lines to the UI (started once, used by every module)
+# Continuously flush queued log lines to the console window the one-liner was
+# run from, instead of a GUI log box -- frees that space up in the window for
+# tab content, and you still get every log line (including from background
+# runspace tasks, since they only ever touch $SyncHash.LogQueue, never the GUI).
 $logTimer = New-Object System.Windows.Threading.DispatcherTimer
 $logTimer.Interval = [TimeSpan]::FromMilliseconds(200)
 $logTimer.Add_Tick({
-    $flushed = $false
     while ($Global:SyncHash.LogQueue.Count -gt 0) {
         $line = $Global:SyncHash.LogQueue.Dequeue()
-        $LogBox.AppendText("$line`r`n")
-        $flushed = $true
+        $color = if ($line -match '\[Error\]|\[ERROR\]') { 'Red' }
+                 elseif ($line -match '\[Warn\]|\[WARN\]') { 'Yellow' }
+                 else { 'Gray' }
+        Write-Host $line -ForegroundColor $color
     }
-    if ($flushed) { $LogBox.ScrollToEnd() }
 })
 $logTimer.Start()
 
