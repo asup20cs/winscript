@@ -52,7 +52,8 @@ function Global:Get-RepoText {
         Write-Host "[local] '$RelativePath' not found under $($Global:LocalRepoPath); falling back to network." -ForegroundColor Yellow
     }
     if (-not $BaseRepoUrl) { throw "No local copy of '$RelativePath' and no BaseRepoUrl configured." }
-    return Invoke-RestMethod -Uri "$BaseRepoUrl/$RelativePath" -UseBasicParsing
+     $resp = Invoke-WebRequest -Uri "$BaseRepoUrl/$RelativePath" -UseBasicParsing
+    return [string]$resp.Content
 }
 
 # Same, but JSON-decoded.
