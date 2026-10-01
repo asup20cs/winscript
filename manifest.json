@@ -19,6 +19,11 @@
       "name": "Disable Firewall",
       "file": "modules/DisableFirewall.ps1",
       "function": "Get-FirewallTab"
+    },
+    {
+      "name": "Personalize",
+      "file": "modules/Personalize.ps1",
+      "function": "Get-DesktopCleanupTab"
     }
   ]
 }
