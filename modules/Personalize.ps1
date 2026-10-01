@@ -1,20 +1,6 @@
 <#
 .SYNOPSIS
     Custom task module for Windows taskbar/start menu cleanup and wallpaper/lockscreen enforcement via Group Policy.
-
-.DESCRIPTION
-    - Windows 11: Unpins all taskbar items and aligns the taskbar to the left (direct registry edits, not Group Policy).
-    - Windows 10: Unpins all Start menu tiles via the Shell COM object (not Group Policy).
-    - Both versions: Sets the desktop wallpaper and lockscreen to
-      C:\Windows\Web\Wallpapers\image.jpg, sets the wallpaper style to "Fill",
-      and prevents the user from changing the background or lockscreen using
-      Group Policy registry keys.
-
-    Use the template rules:
-      - Copy this file to modules/DesktopCleanup.ps1
-      - Rename Get-TemplateTab to Get-DesktopCleanupTab
-      - Add an entry to manifest.json:
-        { "name": "Cleanup", "file": "modules/DesktopCleanup.ps1", "function": "Get-DesktopCleanupTab" }
 #>
 
 function Get-DesktopCleanupTab {
@@ -24,59 +10,97 @@ function Get-DesktopCleanupTab {
     $panel = New-Object System.Windows.Controls.StackPanel
     $panel.Margin = 10
 
-    # ---------- UI: Buttons ----------
-    $btnRun = New-Object System.Windows.Controls.Button
-    $btnRun.Content = "Run Cleanup & Apply Policies"
-    $btnRun.HorizontalAlignment = 'Left'
-    $btnRun.Margin = "0,10,0,0"
-    $btnRun.Add_Click({
+    $desc = New-Object System.Windows.Controls.TextBlock
+    $desc.Text = "Clean taskbar/start menu and configure wallpaper/lockscreen Group Policies."
+    $desc.TextWrapping = 'Wrap'
+    $desc.Margin = "0,0,0,10"
+    $panel.Children.Add($desc) | Out-Null
+
+    $statusRow = New-Object System.Windows.Controls.StackPanel
+    $statusRow.Orientation = 'Horizontal'
+    $statusRow.Margin = "0,0,0,10"
+
+    $statusText = New-Object System.Windows.Controls.TextBlock
+    $statusText.FontWeight = 'Bold'
+    $statusText.VerticalAlignment = 'Center'
+    $statusRow.Children.Add($statusText) | Out-Null
+
+    $btnRefresh = New-Object System.Windows.Controls.Button
+    $btnRefresh.Content = "Refresh"
+    $btnRefresh.Margin = "12,0,0,0"
+    $btnRefresh.Padding = "8,2,8,2"
+    $statusRow.Children.Add($btnRefresh) | Out-Null
+
+    $panel.Children.Add($statusRow) | Out-Null
+
+    $updateStatusLabel = {
+        $noWall = (Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\ActiveDesktop" -Name "NoChangingWallPaper" -ErrorAction SilentlyContinue).NoChangingWallPaper
+        $noLock = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization" -Name "NoChangingLockScreen" -ErrorAction SilentlyContinue).NoChangingLockScreen
+        $wallPolicy = (Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "Wallpaper" -ErrorAction SilentlyContinue).Wallpaper
+
+        if ($noWall -eq 1 -or $noLock -eq 1 -or $wallPolicy) {
+            $statusText.Text = "Current state: POLICIES ENFORCED (Wallpaper/Lock Screen Locked)"
+            $statusText.Foreground = 'IndianRed'
+        }
+        else {
+            $statusText.Text = "Current state: ALLOWED (Customization Unrestricted)"
+            $statusText.Foreground = 'LightGreen'
+        }
+    }.GetNewClosure()
+
+    & $updateStatusLabel
+    $btnRefresh.Add_Click({ & $updateStatusLabel }.GetNewClosure())
+
+    $btnRow = New-Object System.Windows.Controls.StackPanel
+    $btnRow.Orientation = 'Horizontal'
+    $btnRow.Margin = "0,0,0,10"
+
+    $btnApply = New-Object System.Windows.Controls.Button
+    $btnApply.Content = "Run Cleanup & Apply Policies"
+
+    $btnRevert = New-Object System.Windows.Controls.Button
+    $btnRevert.Content = "Remove Policies (Allow Changes)"
+
+    $btnRow.Children.Add($btnApply) | Out-Null
+    $btnRow.Children.Add($btnRevert) | Out-Null
+    $panel.Children.Add($btnRow) | Out-Null
+
+    $btnApply.Add_Click({
+        $btnApply.IsEnabled = $false; $btnRevert.IsEnabled = $false; $btnRefresh.IsEnabled = $false
         Write-Log "Starting desktop cleanup and policy application..."
 
-        Start-BackgroundTask -ArgumentList @() -Work {
+        Start-BackgroundTask -Work {
             param($SyncHash)
 
-            # -------------------------------------------------
-            # 1. Detect Windows version
-            # -------------------------------------------------
             $os = Get-CimInstance -ClassName Win32_OperatingSystem
             $caption = $os.Caption
             $build = [int]($os.BuildNumber)
-
             $SyncHash.LogQueue.Enqueue("Detected OS: $caption (Build $build)")
 
             $isWin11 = $build -ge 22000
             $isWin10 = $build -ge 10240 -and $build -lt 22000
 
-            # -------------------------------------------------
-            # 2. Windows 11: Unpin taskbar + align left (direct registry edits)
-            # -------------------------------------------------
             if ($isWin11) {
-                $SyncHash.LogQueue.Enqueue("Applying Windows 11 taskbar changes (non-GP)...")
-
-                # --- Unpin all taskbar items ---
+                $SyncHash.LogQueue.Enqueue("Applying Windows 11 taskbar changes...")
                 Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
                 Start-Sleep -Seconds 2
 
-                # Remove pinned shortcuts
                 $taskbarPath = "$env:APPDATA\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar"
                 if (Test-Path $taskbarPath) {
                     Remove-Item "$taskbarPath\*" -Force -ErrorAction SilentlyContinue
                     $SyncHash.LogQueue.Enqueue("Removed pinned shortcuts from TaskBar folder.")
                 }
 
-                # Remove Taskband registry key
                 $taskbandKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband"
                 if (Test-Path $taskbandKey) {
                     Remove-Item $taskbandKey -Recurse -Force -ErrorAction SilentlyContinue
                     $SyncHash.LogQueue.Enqueue("Removed Taskband registry key.")
                 }
 
-                # Restart Explorer
                 Start-Process explorer.exe
                 Start-Sleep -Seconds 2
                 $SyncHash.LogQueue.Enqueue("Taskbar pins cleared.")
 
-                # --- Align taskbar to left (normal setting, not a policy) ---
                 $advKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
                 if (-not (Test-Path $advKey)) {
                     New-Item -Path $advKey -Force | Out-Null
@@ -84,13 +108,8 @@ function Get-DesktopCleanupTab {
                 Set-ItemProperty -Path $advKey -Name "TaskbarAl" -Value 0 -Type DWord
                 $SyncHash.LogQueue.Enqueue("Taskbar alignment set to Left (TaskbarAl=0).")
             }
-
-            # -------------------------------------------------
-            # 3. Windows 10: Unpin all Start menu tiles (Shell COM, non-GP)
-            # -------------------------------------------------
             elseif ($isWin10) {
                 $SyncHash.LogQueue.Enqueue("Applying Windows 10 Start menu tile cleanup...")
-
                 try {
                     $shell = New-Object -ComObject Shell.Application
                     $namespace = $shell.NameSpace('shell:::{4234d49b-0245-4df3-b780-3893943456e1}')
@@ -104,71 +123,76 @@ function Get-DesktopCleanupTab {
                     }
                     $SyncHash.LogQueue.Enqueue("All Start menu tiles unpinned.")
                 } catch {
-                    $SyncHash.LogQueue.Enqueue("Error unpinning Start tiles: $_")
+                    $SyncHash.LogQueue.Enqueue("[ERROR] Unpinning Start tiles: $($_.Exception.Message)")
                 }
-            } else {
-                $SyncHash.LogQueue.Enqueue("Unsupported Windows version. Skipping taskbar/start cleanup.")
             }
 
-            # -------------------------------------------------
-            # 4. Apply wallpaper & lockscreen Group Policies
-            # -------------------------------------------------
             $imagePath = "C:\Windows\Web\Wallpapers\image.jpg"
             $SyncHash.LogQueue.Enqueue("Applying wallpaper and lockscreen Group Policies...")
 
-            # --- 4a. Desktop wallpaper (Active Desktop Wallpaper policy) ---
-            # Policy: User Configuration > Administrative Templates > Desktop > Active Desktop
-            #         > Active Desktop Wallpaper
             $wallpaperPolicyKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\System"
             if (-not (Test-Path $wallpaperPolicyKey)) {
                 New-Item -Path $wallpaperPolicyKey -Force | Out-Null
             }
             Set-ItemProperty -Path $wallpaperPolicyKey -Name "Wallpaper" -Value $imagePath -Type String
-            Set-ItemProperty -Path $wallpaperPolicyKey -Name "WallpaperStyle" -Value "10" -Type String   # 10 = Fill
-            $SyncHash.LogQueue.Enqueue("Group Policy applied: Desktop wallpaper set to $imagePath with Fill style.")
+            Set-ItemProperty -Path $wallpaperPolicyKey -Name "WallpaperStyle" -Value "10" -Type String
 
-            # --- 4b. Prevent changing desktop background ---
-            # Policy: User Configuration > Administrative Templates > Control Panel > Display
-            #         > Prevent changing wallpaper
             $activeDesktopKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\ActiveDesktop"
             if (-not (Test-Path $activeDesktopKey)) {
                 New-Item -Path $activeDesktopKey -Force | Out-Null
             }
             Set-ItemProperty -Path $activeDesktopKey -Name "NoChangingWallPaper" -Value 1 -Type DWord
-            $SyncHash.LogQueue.Enqueue("Group Policy applied: User cannot change desktop background.")
 
-            # --- 4c. Lock screen image (machine policy) ---
-            # Policy: Computer Configuration > Administrative Templates > Control Panel > Personalization
-            #         > Force a specific default lock screen image
             $lockScreenPolicyKey = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization"
             if (-not (Test-Path $lockScreenPolicyKey)) {
                 New-Item -Path $lockScreenPolicyKey -Force | Out-Null
             }
             Set-ItemProperty -Path $lockScreenPolicyKey -Name "LockScreenImage" -Value $imagePath -Type String
-            $SyncHash.LogQueue.Enqueue("Group Policy applied: Lock screen image forced to $imagePath.")
-
-            # --- 4d. Prevent changing lock screen image ---
-            # Policy: Computer Configuration > Administrative Templates > Control Panel > Personalization
-            #         > Prevent changing lock screen image
             Set-ItemProperty -Path $lockScreenPolicyKey -Name "NoChangingLockScreen" -Value 1 -Type DWord
-            $SyncHash.LogQueue.Enqueue("Group Policy applied: User cannot change lock screen image.")
 
-            # -------------------------------------------------
-            # 5. Done
-            # -------------------------------------------------
-            $SyncHash.LogQueue.Enqueue("All tasks completed. A reboot or gpupdate /force may be required.")
+            gpupdate /force | Out-Null
+            $SyncHash.LogQueue.Enqueue("Cleanup and policy enforcement completed.")
         } -OnDone {
-            Write-Log "Desktop cleanup and policy task finished."
+            & $updateStatusLabel
+            $btnApply.IsEnabled = $true; $btnRevert.IsEnabled = $true; $btnRefresh.IsEnabled = $true
         }
     }.GetNewClosure())
-    $panel.Children.Add($btnRun) | Out-Null
 
-    # Optional: a simple label explaining the actions
-    $infoLabel = New-Object System.Windows.Controls.TextBlock
-    $infoLabel.Text = "This tab will clean the taskbar/start menu and enforce wallpaper/lockscreen Group Policies."
-    $infoLabel.TextWrapping = 'Wrap'
-    $infoLabel.Margin = "0,10,0,0"
-    $panel.Children.Add($infoLabel) | Out-Null
+    $btnRevert.Add_Click({
+        $btnApply.IsEnabled = $false; $btnRevert.IsEnabled = $false; $btnRefresh.IsEnabled = $false
+        Write-Log "Removing customization policies..."
+
+        Start-BackgroundTask -Work {
+            param($SyncHash)
+            try {
+                $activeDesktopKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\ActiveDesktop"
+                if (Test-Path $activeDesktopKey) {
+                    Remove-ItemProperty -Path $activeDesktopKey -Name "NoChangingWallPaper" -ErrorAction SilentlyContinue
+                }
+
+                $wallpaperPolicyKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\System"
+                if (Test-Path $wallpaperPolicyKey) {
+                    Remove-ItemProperty -Path $wallpaperPolicyKey -Name "Wallpaper" -ErrorAction SilentlyContinue
+                    Remove-ItemProperty -Path $wallpaperPolicyKey -Name "WallpaperStyle" -ErrorAction SilentlyContinue
+                }
+
+                $lockScreenPolicyKey = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization"
+                if (Test-Path $lockScreenPolicyKey) {
+                    Remove-ItemProperty -Path $lockScreenPolicyKey -Name "NoChangingLockScreen" -ErrorAction SilentlyContinue
+                    Remove-ItemProperty -Path $lockScreenPolicyKey -Name "LockScreenImage" -ErrorAction SilentlyContinue
+                }
+
+                gpupdate /force | Out-Null
+                $SyncHash.LogQueue.Enqueue("Customization policies removed. Users can now change wallpaper and lock screen.")
+            }
+            catch {
+                $SyncHash.LogQueue.Enqueue("[ERROR] Failed to revert policies: $($_.Exception.Message)")
+            }
+        } -OnDone {
+            & $updateStatusLabel
+            $btnApply.IsEnabled = $true; $btnRevert.IsEnabled = $true; $btnRefresh.IsEnabled = $true
+        }
+    }.GetNewClosure())
 
     $tab.Content = $panel
     return $tab

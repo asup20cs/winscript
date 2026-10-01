@@ -1,16 +1,7 @@
 <#
 .SYNOPSIS
     Accounts / EnableDefaultAdmin module.
-
-    Order of operations matters here -- we never touch the current user's
-    group membership until the built-in Administrator account has been
-    confirmed enabled AND its password has been confirmed set. If either
-    of those fails, the demote step is skipped entirely so you can't end up
-    with no working admin account on the box.
-
-    Uses well-known SIDs (S-1-5-32-544 = Administrators, S-1-5-32-545 =
-    Users) instead of the group names, since "Administrators"/"Users" are
-    localized on non-English Windows builds.
+    Enables built-in Administrator, sets password, and adjusts current user membership.
 #>
 
 function Get-EnableDefaultAdminTab {
@@ -19,6 +10,55 @@ function Get-EnableDefaultAdminTab {
 
     $panel = New-Object System.Windows.Controls.StackPanel
     $panel.Margin = 10
+
+    $statusRow = New-Object System.Windows.Controls.StackPanel
+    $statusRow.Orientation = 'Horizontal'
+    $statusRow.Margin = "0,0,0,10"
+
+    $statusText = New-Object System.Windows.Controls.TextBlock
+    $statusText.FontWeight = 'Bold'
+    $statusText.VerticalAlignment = 'Center'
+    $statusRow.Children.Add($statusText) | Out-Null
+
+    $btnRefresh = New-Object System.Windows.Controls.Button
+    $btnRefresh.Content = "Refresh"
+    $btnRefresh.Margin = "12,0,0,0"
+    $btnRefresh.Padding = "8,2,8,2"
+    $statusRow.Children.Add($btnRefresh) | Out-Null
+
+    $panel.Children.Add($statusRow) | Out-Null
+
+    $updateStatusLabel = {
+        try {
+            $adminUser = Get-LocalUser -Name "Administrator" -ErrorAction Stop
+            $adminStatus = if ($adminUser.Enabled) { "ENABLED" } else { "DISABLED" }
+
+            $currUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+            $isAdmin = $false
+            $adminGroup = Get-LocalGroup -SID "S-1-5-32-544" -ErrorAction SilentlyContinue
+            if ($adminGroup) {
+                $members = Get-LocalGroupMember -SID "S-1-5-32-544" -ErrorAction SilentlyContinue
+                if ($members | Where-Object { $_.Name -eq $currUser }) {
+                    $isAdmin = $true
+                }
+            }
+            $userRole = if ($isAdmin) { "Administrator" } else { "Standard User" }
+            $statusText.Text = "Administrator Account: $adminStatus   |   Current User ($currUser): $userRole"
+            if ($adminUser.Enabled) {
+                $statusText.Foreground = 'LightGreen'
+            }
+            else {
+                $statusText.Foreground = 'IndianRed'
+            }
+        }
+        catch {
+            $statusText.Text = "Could not query account status: $($_.Exception.Message)"
+            $statusText.Foreground = 'Gray'
+        }
+    }.GetNewClosure()
+
+    & $updateStatusLabel
+    $btnRefresh.Add_Click({ & $updateStatusLabel }.GetNewClosure())
 
     $warn = New-Object System.Windows.Controls.TextBlock
     $warn.Text = "This enables the built-in Administrator account, sets its password, then removes the CURRENT user ($([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)) from the Administrators group and adds it to Users. Make sure you will remember the Administrator password -- it becomes your only local admin account after this runs."
@@ -107,7 +147,7 @@ function Get-EnableDefaultAdminTab {
         $pwBox.Password = ""; $pwBox2.Password = ""
         $pw1 = $null; $pw2 = $null
 
-        $btnApply.IsEnabled = $false
+        $btnApply.IsEnabled = $false; $btnRefresh.IsEnabled = $false
         Write-Log "Starting local account changes for user '$currentUser'..."
 
         Start-BackgroundTask -ArgumentList @($securePw, $currentUser) -Work {
@@ -115,7 +155,6 @@ function Get-EnableDefaultAdminTab {
 
             $adminAccountReady = $false
 
-            # --- Step 1 & 2: enable Administrator and set its password -------
             try {
                 $admin = Get-LocalUser -Name "Administrator" -ErrorAction Stop
                 if (-not $admin.Enabled) {
@@ -129,7 +168,6 @@ function Get-EnableDefaultAdminTab {
                 Set-LocalUser -Name "Administrator" -Password $SecurePassword -ErrorAction Stop
                 $SyncHash.LogQueue.Enqueue("Administrator password set.")
 
-                # Verify before proceeding any further
                 $verify = Get-LocalUser -Name "Administrator" -ErrorAction Stop
                 if ($verify.Enabled) {
                     $adminAccountReady = $true
@@ -148,7 +186,6 @@ function Get-EnableDefaultAdminTab {
                 return
             }
 
-            # --- Step 3 & 4: only run if Administrator is confirmed working --
             try {
                 $adminGroup = Get-LocalGroup -SID "S-1-5-32-544" -ErrorAction Stop
                 $usersGroup = Get-LocalGroup -SID "S-1-5-32-545" -ErrorAction Stop
@@ -179,8 +216,9 @@ function Get-EnableDefaultAdminTab {
                 $SyncHash.LogQueue.Enqueue("[ERROR] Failed to resolve local groups by SID: $($_.Exception.Message)")
             }
         } -OnDone {
-            $btnApply.IsEnabled = $true
-        }.GetNewClosure()
+            & $updateStatusLabel
+            $btnApply.IsEnabled = $true; $btnRefresh.IsEnabled = $true
+        }
     }.GetNewClosure())
 
     $tab.Content = $panel
