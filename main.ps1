@@ -11,6 +11,56 @@ if (-not $Global:BaseRepoUrl) {
     # Fallback if someone dot-sources this file directly during dev/testing
     $Global:BaseRepoUrl = "https://raw.githubusercontent.com/asup20cs/winscript/main"
 }
+# ---------------------------------------------------------------------------
+# Local-first repo loader.
+#   - If $env:WINTOOL_LOCAL_REPO points at a folder that contains manifest.json,
+#     use it.
+#   - Otherwise, if main.ps1 is being run directly from a folder that contains
+#     manifest.json, use that folder.
+#   - Otherwise, fall back to downloading from $BaseRepoUrl.
+# Set $env:WINTOOL_LOCAL_REPO once and every subsequent run is fully offline.
+# ---------------------------------------------------------------------------
+if (-not $Global:LocalRepoPath) {
+    if ($env:WINTOOL_LOCAL_REPO -and (Test-Path (Join-Path $env:WINTOOL_LOCAL_REPO 'manifest.json'))) {
+        $Global:LocalRepoPath = $env:WINTOOL_LOCAL_REPO
+    }
+    else {
+        $candidate = $null
+        if ($PSScriptRoot)                    { $candidate = $PSScriptRoot }
+        elseif ($MyInvocation.MyCommand.Path) { $candidate = Split-Path -Parent $MyInvocation.MyCommand.Path }
+        if ($candidate -and (Test-Path (Join-Path $candidate 'manifest.json'))) {
+            $Global:LocalRepoPath = $candidate
+        }
+        elseif (Test-Path (Join-Path (Get-Location).Path 'manifest.json')) {
+            $Global:LocalRepoPath = (Get-Location).Path
+        }
+    }
+    if ($Global:LocalRepoPath) {
+        Write-Host "[local] Using repo at $($Global:LocalRepoPath)" -ForegroundColor Cyan
+    }
+}
+
+# Read a file from the repo: local disk first, network second.
+function Global:Get-RepoText {
+    param([Parameter(Mandatory)][string]$RelativePath)
+
+    if ($Global:LocalRepoPath) {
+        $local = Join-Path $Global:LocalRepoPath $RelativePath
+        if (Test-Path $local) {
+            return Get-Content -Path $local -Raw -ErrorAction Stop
+        }
+        Write-Host "[local] '$RelativePath' not found under $($Global:LocalRepoPath); falling back to network." -ForegroundColor Yellow
+    }
+    if (-not $BaseRepoUrl) { throw "No local copy of '$RelativePath' and no BaseRepoUrl configured." }
+    return Invoke-RestMethod -Uri "$BaseRepoUrl/$RelativePath" -UseBasicParsing
+}
+
+# Same, but JSON-decoded.
+function Global:Get-RepoJson {
+    param([Parameter(Mandatory)][string]$RelativePath)
+    $text = Get-RepoText -RelativePath $RelativePath
+    return ($text | ConvertFrom-Json)
+}
 
 # ---------------------------------------------------------------------------
 # Shared state used by every module (background tasks + thread-safe logging)
@@ -19,7 +69,7 @@ $Global:SyncHash = [hashtable]::Synchronized(@{
     LogQueue = [System.Collections.Queue]::Synchronized((New-Object System.Collections.Queue))
 })
 
-function Write-Log {
+function Global:Write-Log {
     param([string]$Message, [string]$Level = "Info")
     $stamp = Get-Date -Format "HH:mm:ss"
     $Global:SyncHash.LogQueue.Enqueue("[$stamp][$Level] $Message")
@@ -28,15 +78,17 @@ function Write-Log {
 # Runs a scriptblock on a background runspace so the GUI never freezes.
 # The scriptblock receives $SyncHash as its first argument -- use
 # $SyncHash.LogQueue.Enqueue("text") to log from inside it.
-function Start-BackgroundTask {
+function Global:Start-BackgroundTask {
     param(
         [Parameter(Mandatory)][scriptblock]$Work,
         [object[]]$ArgumentList = @(),
         [scriptblock]$OnDone
     )
+
     $ps = [powershell]::Create()
     $null = $ps.AddScript($Work).AddArgument($Global:SyncHash)
     foreach ($extraArg in $ArgumentList) { $null = $ps.AddArgument($extraArg) }
+
     $rs = [runspacefactory]::CreateRunspace()
     $rs.ApartmentState = 'MTA'
     $rs.Open()
@@ -44,16 +96,39 @@ function Start-BackgroundTask {
     $handle = $ps.BeginInvoke()
 
     $timer = New-Object System.Windows.Threading.DispatcherTimer
-    $timer.Interval = [TimeSpan]::FromMilliseconds(250)
+    $timer.Interval = [TimeSpan]::FromMilliseconds(200)
+    $timer.Tag = [pscustomobject]@{
+        Ps     = $ps
+        Rs     = $rs
+        Handle = $handle
+        Queue  = $Global:SyncHash.LogQueue
+        OnDone = $OnDone
+    }
+
     $timer.Add_Tick({
-        if ($handle.IsCompleted) {
-            $timer.Stop()
-            try { $null = $ps.EndInvoke($handle) }
-            catch { $Global:SyncHash.LogQueue.Enqueue("[ERROR] $($_.Exception.Message)") }
-            $rs.Close(); $ps.Dispose()
-            if ($OnDone) { & $OnDone }
+        param($timerRef, $timerEventArgs)
+        $st = $timerRef.Tag
+        if ($null -eq $st)               { $timerRef.Stop(); return }
+        if (-not $st.Handle.IsCompleted) { return }
+
+        $timerRef.Stop()
+        try   { $null = $st.Ps.EndInvoke($st.Handle) }
+        catch { $st.Queue.Enqueue("[ERROR] $($_.Exception.Message)") }
+
+        if ($st.Ps.Streams.Error.Count -gt 0) {
+            foreach ($err in $st.Ps.Streams.Error) {
+                $st.Queue.Enqueue("[ERROR] $err")
+            }
         }
-    }.GetNewClosure())
+
+        try { $st.Rs.Close()   } catch {}
+        try { $st.Ps.Dispose() } catch {}
+
+        if ($st.OnDone) {
+            try { & $st.OnDone }
+            catch { $st.Queue.Enqueue("[ERROR] OnDone: $($_.Exception.Message)") }
+        }
+    })
     $timer.Start()
 }
 
@@ -63,7 +138,7 @@ function Start-BackgroundTask {
 [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="WinTool" Height="540" Width="960"
+        Title="WinScript" Height="540" Width="960"
         WindowStartupLocation="CenterScreen"
         Background="#1E1E1E">
     <Window.Resources>
@@ -260,17 +335,14 @@ $logTimer.Start()
 # ---------------------------------------------------------------------------
 $StatusText.Text = "Loading modules..."
 try {
-    $manifest = Invoke-RestMethod -Uri "$BaseRepoUrl/manifest.json" -UseBasicParsing
+    $manifest = Get-RepoJson -RelativePath "manifest.json"
     foreach ($mod in $manifest.modules) {
         try {
             Write-Log "Loading module: $($mod.name)"
-            $code = Invoke-RestMethod -Uri "$BaseRepoUrl/$($mod.file)" -UseBasicParsing
+            $code = Get-RepoText -RelativePath $mod.file
             Invoke-Expression $code
             $tabItem = & $mod.function
             if ($tabItem) {
-                # Modules aren't required to wrap themselves in a ScrollViewer --
-                # enforce it here so every tab scrolls if its content overflows
-                # the window (e.g. on smaller screens or long checklists).
                 if ($tabItem.Content -isnot [System.Windows.Controls.ScrollViewer]) {
                     $originalContent = $tabItem.Content
                     $scrollWrapper = New-Object System.Windows.Controls.ScrollViewer
@@ -293,4 +365,18 @@ catch {
     $StatusText.Text = "Failed to load modules -- check log"
 }
 
-$window.ShowDialog() | Out-Null
+try {
+    $null = $window.ShowDialog()
+}
+catch {
+    Write-Host ""
+    Write-Host "=== GUI exception ===" -ForegroundColor Red
+    Write-Host $_.Exception.Message -ForegroundColor Red
+    Write-Host $_.ScriptStackTrace -ForegroundColor DarkRed
+}
+finally {
+    Write-Host ""
+    Write-Host "Window closed. Last error (if any):" -ForegroundColor Yellow
+    if ($Error.Count -gt 0) { $Error[0] | Format-List * -Force }
+    else { Write-Host "  (none)" }
+}
