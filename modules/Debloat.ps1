@@ -90,7 +90,7 @@ function Get-DebloatTab {
                 try {
                     $SyncHash.LogQueue.Enqueue("Creating system restore point...")
                     Enable-ComputerRestore -Drive "$env:SystemDrive\" -ErrorAction SilentlyContinue
-                    Checkpoint-Computer -Description "WinTool Debloat" -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop
+                    Checkpoint-Computer -Description "WinScript Debloat" -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop
                     $SyncHash.LogQueue.Enqueue("Restore point created.")
                 }
                 catch {
