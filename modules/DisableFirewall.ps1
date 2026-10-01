@@ -1,9 +1,7 @@
 <#
 .SYNOPSIS
-    Network / Firewall module. Toggles Windows Firewall for the Public and
-    Private profiles using Set-NetFirewallProfile. Domain profile is left
-    untouched (irrelevant on a workgroup/local-groups-only setup, and left
-    alone anyway for domain-joined machines since it's usually managed by GPO).
+    Network / Firewall module. Toggles Windows Firewall for Public and
+    Private profiles using Set-NetFirewallProfile.
 #>
 
 function Get-FirewallTab {
@@ -21,10 +19,22 @@ function Get-FirewallTab {
     $warn.Margin = "0,0,0,10"
     $panel.Children.Add($warn) | Out-Null
 
+    $statusRow = New-Object System.Windows.Controls.StackPanel
+    $statusRow.Orientation = 'Horizontal'
+    $statusRow.Margin = "0,0,0,10"
+
     $statusText = New-Object System.Windows.Controls.TextBlock
     $statusText.FontWeight = 'Bold'
-    $statusText.Margin = "0,0,0,10"
-    $panel.Children.Add($statusText) | Out-Null
+    $statusText.VerticalAlignment = 'Center'
+    $statusRow.Children.Add($statusText) | Out-Null
+
+    $btnRefresh = New-Object System.Windows.Controls.Button
+    $btnRefresh.Content = "Refresh"
+    $btnRefresh.Margin = "12,0,0,0"
+    $btnRefresh.Padding = "8,2,8,2"
+    $statusRow.Children.Add($btnRefresh) | Out-Null
+
+    $panel.Children.Add($statusRow) | Out-Null
 
     $updateStatusLabel = {
         try {
@@ -43,7 +53,9 @@ function Get-FirewallTab {
             $statusText.Foreground = 'Gray'
         }
     }.GetNewClosure()
+
     & $updateStatusLabel
+    $btnRefresh.Add_Click({ & $updateStatusLabel }.GetNewClosure())
 
     $btnRow = New-Object System.Windows.Controls.StackPanel
     $btnRow.Orientation = 'Horizontal'
@@ -63,7 +75,7 @@ function Get-FirewallTab {
         $result = [System.Windows.MessageBox]::Show($confirmMsg, "Confirm Firewall Change", 'YesNo', 'Warning')
         if ($result -ne 'Yes') { return }
 
-        $btnDisable.IsEnabled = $false; $btnEnable.IsEnabled = $false
+        $btnDisable.IsEnabled = $false; $btnEnable.IsEnabled = $false; $btnRefresh.IsEnabled = $false
         Write-Log "Disabling firewall for Public and Private profiles..."
 
         Start-BackgroundTask -Work {
@@ -77,12 +89,12 @@ function Get-FirewallTab {
             }
         } -OnDone {
             & $updateStatusLabel
-            $btnDisable.IsEnabled = $true; $btnEnable.IsEnabled = $true
-        }.GetNewClosure()
+            $btnDisable.IsEnabled = $true; $btnEnable.IsEnabled = $true; $btnRefresh.IsEnabled = $true
+        }
     }.GetNewClosure())
 
     $btnEnable.Add_Click({
-        $btnDisable.IsEnabled = $false; $btnEnable.IsEnabled = $false
+        $btnDisable.IsEnabled = $false; $btnEnable.IsEnabled = $false; $btnRefresh.IsEnabled = $false
         Write-Log "Enabling firewall for Public and Private profiles..."
 
         Start-BackgroundTask -Work {
@@ -96,8 +108,8 @@ function Get-FirewallTab {
             }
         } -OnDone {
             & $updateStatusLabel
-            $btnDisable.IsEnabled = $true; $btnEnable.IsEnabled = $true
-        }.GetNewClosure()
+            $btnDisable.IsEnabled = $true; $btnEnable.IsEnabled = $true; $btnRefresh.IsEnabled = $true
+        }
     }.GetNewClosure())
 
     $tab.Content = $panel
