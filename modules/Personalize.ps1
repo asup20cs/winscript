@@ -127,7 +127,7 @@ function Get-DesktopCleanupTab {
                 }
             }
 
-            $imagePath = "C:\Windows\Web\Wallpapers\image.jpg"
+            $imagePath = "C:\Windows\Web\Wallpaper\nmc-bg.jpg"
             $SyncHash.LogQueue.Enqueue("Applying wallpaper and lockscreen Group Policies...")
 
             $wallpaperPolicyKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\System"
