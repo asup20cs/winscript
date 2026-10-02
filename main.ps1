@@ -297,18 +297,26 @@ $BannerText.Text = @"
 ██║╚██╗██║██║╚██╔╝██║██║         ██║   ██║   
 ██║ ╚████║██║ ╚═╝ ██║╚██████╗    ██║   ██║   
 ╚═╝  ╚═══╝╚═╝     ╚═╝ ╚═════╝    ╚═╝   ╚═╝   
-                                             
+                                            
 "@
 
 $bannerBrush = New-Object System.Windows.Media.LinearGradientBrush
 $bannerBrush.StartPoint = New-Object System.Windows.Point(0,0)
 $bannerBrush.EndPoint   = New-Object System.Windows.Point(1,1)
-$bannerBrush.GradientStops.Add((New-Object System.Windows.Media.GradientStop([System.Windows.Media.Color]::FromRgb(0,217,255), 0)))
-$bannerBrush.GradientStops.Add((New-Object System.Windows.Media.GradientStop([System.Windows.Media.Color]::FromRgb(10,132,255), 1)))
+
+# Rainbow Gradient Stops (Red -> Orange -> Yellow -> Green -> Blue -> Indigo -> Violet)
+$bannerBrush.GradientStops.Add((New-Object System.Windows.Media.GradientStop([System.Windows.Media.Color]::FromRgb(255, 0, 0),     0.0)))  # Red
+$bannerBrush.GradientStops.Add((New-Object System.Windows.Media.GradientStop([System.Windows.Media.Color]::FromRgb(255, 127, 0),   0.17))) # Orange
+$bannerBrush.GradientStops.Add((New-Object System.Windows.Media.GradientStop([System.Windows.Media.Color]::FromRgb(255, 255, 0),   0.33))) # Yellow
+$bannerBrush.GradientStops.Add((New-Object System.Windows.Media.GradientStop([System.Windows.Media.Color]::FromRgb(0, 255, 0),     0.5)))  # Green
+$bannerBrush.GradientStops.Add((New-Object System.Windows.Media.GradientStop([System.Windows.Media.Color]::FromRgb(0, 0, 255),     0.67))) # Blue
+$bannerBrush.GradientStops.Add((New-Object System.Windows.Media.GradientStop([System.Windows.Media.Color]::FromRgb(75, 0, 130),    0.83))) # Indigo
+$bannerBrush.GradientStops.Add((New-Object System.Windows.Media.GradientStop([System.Windows.Media.Color]::FromRgb(148, 0, 211),   1.0)))  # Violet
+
 $BannerText.Foreground = $bannerBrush
 
 $bannerGlow = New-Object System.Windows.Media.Effects.DropShadowEffect
-$bannerGlow.Color = [System.Windows.Media.Color]::FromRgb(10,132,255)
+$bannerGlow.Color = [System.Windows.Media.Color]::FromRgb(255, 255, 255) # White glow to complement rainbow
 $bannerGlow.BlurRadius = 20
 $bannerGlow.ShadowDepth = 3
 $bannerGlow.Opacity = 0.6
